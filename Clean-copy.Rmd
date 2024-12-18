@@ -1,0 +1,369 @@
+---
+title: "BM_final"
+output: html_document
+date: "2024-12-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(GGally)
+```
+
+# load data
+```{r}
+data = read.csv("Project_2_data.csv")
+data
+```
+# preprocess
+```{r}
+colnames(data)
+data <- data %>%
+  drop_na()%>%
+  mutate(Main.Stage = case_when(
+    X6th.Stage %in% c("IIIA", "IIIC") ~ "III",
+    X6th.Stage %in% c("IIA", "IIB") ~ "II",
+    X6th.Stage %in% c("IVA", "IVB") ~ "IV",
+    TRUE ~ X6th.Stage
+  ))%>%
+  mutate(
+    T.Stage = as.numeric(gsub("T", "", T.Stage)),
+    N.Stage = as.numeric(gsub("N", "", N.Stage))
+  )%>%
+  mutate(
+    Race = as.factor(Race),
+    Marital.Status = as.factor(Marital.Status),
+    Estrogen.Status = as.factor(Estrogen.Status),
+    Progesterone.Status = as.factor(Progesterone.Status),
+    differentiate = as.factor(differentiate),
+    A.Stage = as.factor(A.Stage),
+    Status = as.factor(Status),
+    Main.Stage = as.factor(Main.Stage)
+  )%>%
+  select(-X6th.Stage)%>%
+  mutate(
+    Grade = as.numeric(gsub("[^0-9]", "", Grade)) 
+  )%>%
+  rename(Regional.Node.Positive = "Reginol.Node.Positive")
+data
+
+```
+
+## see the plot after first preprocess
+```{r}
+for (var in names(data)) {
+  # Skip if the column is not numeric
+  if (is.numeric(data[[var]])) {
+    
+    # Histogram
+    p1 <- ggplot(data, aes_string(x = var)) +
+      geom_histogram(fill = "skyblue", color = "black", bins = 30) +
+      labs(title = paste("Histogram of", var), x = var, y = "Frequency") +
+      theme_minimal()
+    print(p1)
+    
+    # Boxplot
+    p2 <- ggplot(data, aes_string(y = var)) +
+      geom_boxplot(fill = "lightgreen", color = "black") +
+      labs(title = paste("Boxplot of", var), y = var) +
+      theme_minimal()
+    print(p2)
+  }
+}
+
+```
+## see the correlation between regional.node.examined and regional.node.positive
+```{r}
+pairs_data <- data[, c("Regional.Node.Examined", "Regional.Node.Positive")]
+
+pairs(pairs_data, main = "Pairs Plot: Regional Node Examined vs Regional Node Positive",
+      pch = 21, bg = "lightblue")
+
+```
+Linear Trend: There appears to be a positive association between Regional.Node.Examined and Regional.Node.Positive. As the number of nodes examined increases, the number of positive nodes also tends to increase.
+However, the relationship is not perfectly linear; there is noticeable spread in the points.
+
+High Variability: There is significant variability in Regional.Node.Positive values for a given range of Regional.Node.Examined. This suggests that other factors might influence the number of positive nodes beyond the number of examined nodes.
+
+Outliers: A few observations stand out as potential outliers, particularly where Regional.Node.Examined is high, but the number of Regional.Node.Positive remains low (or vice versa). These outliers could be influential points worth further investigation.
+
+## introduce a new variable proportion
+```{r}
+data = data%>%
+  mutate(Node.Proportion = Regional.Node.Positive / Regional.Node.Examined)
+```
+
+## see the plot after the second preprocess
+```{r}
+for (var in names(data)) {
+  # Skip if the column is not numeric
+  if (is.numeric(data[[var]])) {
+    
+    # Histogram
+    p1 <- ggplot(data, aes_string(x = var)) +
+      geom_histogram(fill = "skyblue", color = "black", bins = 30) +
+      labs(title = paste("Histogram of", var), x = var, y = "Frequency") +
+      theme_minimal()
+    print(p1)
+    
+    # Boxplot
+    p2 <- ggplot(data, aes_string(y = var)) +
+      geom_boxplot(fill = "lightgreen", color = "black") +
+      labs(title = paste("Boxplot of", var), y = var) +
+      theme_minimal()
+    print(p2)
+  }
+}
+```
+
+## skewness of Tumor.size
+```{r}
+hist(log(data$Tumor.Size))
+hist(sqrt(data$Tumor.Size))
+```
+
+## log transformation for tumor.size
+
+```{r}
+data = data %>%
+  mutate(Tumor.Size = log(Tumor.Size))
+```
+## see the plot after the third preprocess
+```{r}
+for (var in names(data)) {
+  # Skip if the column is not numeric
+  if (is.numeric(data[[var]])) {
+    
+    # Histogram
+    p1 <- ggplot(data, aes_string(x = var)) +
+      geom_histogram(fill = "skyblue", color = "black", bins = 30) +
+      labs(title = paste("Histogram of", var), x = var, y = "Frequency") +
+      theme_minimal()
+    print(p1)
+    
+    # Boxplot
+    p2 <- ggplot(data, aes_string(y = var)) +
+      geom_boxplot(fill = "lightgreen", color = "black") +
+      labs(title = paste("Boxplot of", var), y = var) +
+      theme_minimal()
+    print(p2)
+  }
+}
+```
+
+#Model Construction
+#Model1-Baseline Logistic Regression
+```{r}
+model1 <- glm(Status ~ Age + Race + T.Stage + N.Stage + Tumor.Size + 
+                Estrogen.Status + Progesterone.Status, 
+              data = data, family = binomial)
+summary(model1)
+```
+#Model2-Logistic Regression with Transformed Variables
+```{r}
+model2 <- glm(Status ~ Age + Race + Node.Proportion + Tumor.Size + 
+                Estrogen.Status + Progesterone.Status, 
+              data = data, family = binomial)
+summary(model2)
+```
+
+#Model3-Interaction Model
+```{r}
+model3 <- glm(Status ~ Age + Race + Node.Proportion + Tumor.Size + 
+                Estrogen.Status * Progesterone.Status, 
+              data = data, family = binomial)
+summary(model3)
+```
+#Model4-Stepwise Selection
+```{r}
+# Remove rows with any missing values before fitting the model
+clean_data <- data %>% drop_na()
+
+# Build the full logistic regression model
+full_model <- glm(Status ~ ., data = clean_data, family = binomial)
+
+# Perform stepwise selection
+model4 <- step(full_model, direction = "both", trace = FALSE)
+
+# Summary of the selected model
+summary(model4)
+
+```
+#Model5-Fairness: Separate Models by Race
+```{r}
+# Stratify data by race
+data_white <- filter(data, Race == "White")
+data_nonwhite <- filter(data, Race != "White")
+
+# White group model
+model_white <- glm(Status ~ Age + Node.Proportion + Tumor.Size, 
+                   data = data_white, family = binomial)
+
+# Non-white group model
+model_nonwhite <- glm(Status ~ Age + Node.Proportion + Tumor.Size, 
+                      data = data_nonwhite, family = binomial)
+
+summary(model_white)
+summary(model_nonwhite)
+```
+
+#Model Validation
+```{r}
+library(pROC)
+library(caret)
+# Ensure predictions align with the dataset used for model training
+clean_data$predicted_prob <- predict(model4, type = "response")
+
+# ROC Curve for Model 4
+roc_curve <- roc(clean_data$Status, clean_data$predicted_prob)
+plot(roc_curve, main = "ROC Curve for Model 4", col = "blue")
+auc_value <- auc(roc_curve)
+print(paste("AUC for Model 4:", round(auc_value, 3)))
+
+# Confusion Matrix (using a cutoff of 0.5)
+predicted_class <- ifelse(clean_data$predicted_prob > 0.5, "Dead", "Alive")
+conf_matrix <- confusionMatrix(as.factor(predicted_class), as.factor(clean_data$Status), positive = "Dead")
+print(conf_matrix)
+```
+
+```{r}
+# Use cleaned data for residuals and fitted values
+clean_data$residuals <- residuals(model4, type = "deviance")
+fitted_values <- fitted(model4)
+
+# Residuals vs Fitted Values Plot
+library(ggplot2)
+ggplot(clean_data, aes(x = fitted_values, y = residuals)) +
+  geom_point(color = "blue", alpha = 0.5) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  labs(title = "Residuals vs Fitted Values", x = "Fitted Values", y = "Deviance Residuals") +
+  theme_minimal()
+```
+
+```{r}
+clean_data <- clean_data %>%
+  filter(differentiate != "Undifferentiated") %>%
+  droplevels()
+model4 <- glm(Status ~ Age + Race + T.Stage + N.Stage + Survival.Months +
+                Node.Proportion + Regional.Node.Positive + 
+                Estrogen.Status + Progesterone.Status,
+              data = clean_data, family = binomial)
+# Filter out "Undifferentiated" rows in subsets
+data_white_filtered <- data_white %>%
+  filter(differentiate %in% levels(clean_data$differentiate)) %>%
+  droplevels()
+
+data_nonwhite_filtered <- data_nonwhite %>%
+  filter(differentiate %in% levels(clean_data$differentiate)) %>%
+  droplevels()
+
+# Predict probabilities and evaluate ROC for White group
+roc_white <- roc(data_white_filtered$Status,
+                 predict(model4, newdata = data_white_filtered, type = "response"))
+
+auc_white <- auc(roc_white)
+print(paste("AUC for White group:", round(auc_white, 3)))
+
+# Predict probabilities and evaluate ROC for Non-White group
+roc_nonwhite <- roc(data_nonwhite_filtered$Status,
+                    predict(model4, newdata = data_nonwhite_filtered, type = "response"))
+
+auc_nonwhite <- auc(roc_nonwhite)
+print(paste("AUC for Non-White group:", round(auc_nonwhite, 3)))
+
+
+```
+
+```{r}
+library(broom)
+
+# Extract and format coefficients
+coeff_table <- tidy(model4, conf.int = TRUE, exponentiate = TRUE)
+significant_coeffs <- coeff_table %>% filter(p.value < 0.05)
+print(significant_coeffs)
+
+# Save table as CSV (for your report)
+write.csv(significant_coeffs, "significant_model4_coefficients.csv")
+
+```
+
+```{r}
+# Boxplot for Node.Proportion by Status
+ggplot(data, aes(x = Status, y = Node.Proportion, fill = Status)) +
+  geom_boxplot() +
+  theme_minimal() +
+  labs(title = "Node Proportion by Survival Status", x = "Status", y = "Node Proportion")
+
+# Scatter plot for Survival.Months vs Node.Proportion
+ggplot(data, aes(x = Survival.Months, y = Node.Proportion, color = Status)) +
+  geom_point(alpha = 0.7) +
+  theme_minimal() +
+  labs(title = "Survival Months vs Node Proportion", x = "Survival Months", y = "Node Proportion")
+```
+#Model Validation with sample
+#Split Data into Training and Testing Sets
+```{r}
+set.seed(123)  # For reproducibility
+library(caret)
+
+# Create training and testing sets
+train_index <- createDataPartition(clean_data$Status, p = 0.8, list = FALSE)
+train_data <- clean_data[train_index, ]
+test_data <- clean_data[-train_index, ]
+
+# Refit the model using the training set
+model4_train <- glm(Status ~ Age + Race + T.Stage + N.Stage + Survival.Months +
+                      Node.Proportion + Regional.Node.Positive +
+                      Estrogen.Status + Progesterone.Status,
+                    data = train_data, family = binomial)
+
+# Predict probabilities on the test set
+test_data$predicted_prob <- predict(model4_train, newdata = test_data, type = "response")
+```
+
+#Evaluate Model Performance on Test Data
+```{r}
+# ROC-AUC for test data
+library(pROC)
+roc_test <- roc(test_data$Status, test_data$predicted_prob)
+auc_test <- auc(roc_test)
+
+# Plot ROC curve
+plot(roc_test, main = "ROC Curve for Test Data", col = "blue")
+print(paste("AUC on Test Data:", round(auc_test, 3)))
+
+# Create confusion matrix using a threshold of 0.5
+test_data$predicted_class <- ifelse(test_data$predicted_prob > 0.5, "Dead", "Alive")
+conf_matrix_test <- confusionMatrix(as.factor(test_data$predicted_class), 
+                                    as.factor(test_data$Status), 
+                                    positive = "Dead")
+print(conf_matrix_test)
+```
+#Cross-Validation
+```{r}
+# Perform k-fold cross-validation (k = 5)
+set.seed(123)
+cv_control <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFunction = twoClassSummary)
+
+cv_model <- train(Status ~ Age + Race + T.Stage + N.Stage + Survival.Months +
+                    Node.Proportion + Regional.Node.Positive +
+                    Estrogen.Status + Progesterone.Status,
+                  data = clean_data, method = "glm", family = "binomial",
+                  trControl = cv_control, metric = "ROC")
+
+# Print cross-validation results
+print(cv_model)
+```
+
+```{r}
+threshold <- 0.3
+test_data$predicted_class <- ifelse(test_data$predicted_prob > threshold, "Dead", "Alive")
+conf_matrix_adj <- confusionMatrix(as.factor(test_data$predicted_class), 
+                                   as.factor(test_data$Status), positive = "Dead")
+print(conf_matrix_adj)
+```
+
