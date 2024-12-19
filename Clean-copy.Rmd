@@ -179,212 +179,132 @@ geom_vline(data = df_long, aes(xintercept = ave(value, variable, FUN = median)),
 #Model Construction
 #Model1-Baseline Logistic Regression
 ```{r}
-model1 <- glm(Status ~ Age + Race + T.Stage + N.Stage + Tumor.Size + 
-                Estrogen.Status + Progesterone.Status, 
+data$tumor_size <- ifelse(is.infinite(data$tumor_size), NA, data$tumor_size)
+
+data <- data %>% drop_na(tumor_size)
+
+model1 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
+                estrogen_status + progesterone_status,
               data = data, family = binomial)
+
 summary(model1)
+
 ```
 #Model2-Logistic Regression with Transformed Variables
 ```{r}
-model2 <- glm(Status ~ Age + Race + Node.Proportion + Tumor.Size + 
-                Estrogen.Status + Progesterone.Status, 
+model2 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
+                estrogen_status * progesterone_status,
               data = data, family = binomial)
+
 summary(model2)
+
 ```
 
 #Model3-Interaction Model
 ```{r}
-model3 <- glm(Status ~ Age + Race + Node.Proportion + Tumor.Size + 
-                Estrogen.Status * Progesterone.Status, 
+model3 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
+                estrogen_status + progesterone_status + node_proportion,
               data = data, family = binomial)
+
 summary(model3)
 ```
 #Model4-Stepwise Selection
 ```{r}
-# Remove rows with any missing values before fitting the model
-clean_data <- data %>% drop_na()
+model4 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
+                estrogen_status + progesterone_status + node_proportion +
+                survival_months,
+              data = data, family = binomial)
 
-# Build the full logistic regression model
-full_model <- glm(Status ~ ., data = clean_data, family = binomial)
-
-# Perform stepwise selection
-model4 <- step(full_model, direction = "both", trace = FALSE)
-
-# Summary of the selected model
 summary(model4)
-
 ```
 #Model5-Fairness: Separate Models by Race
 ```{r}
 # Stratify data by race
-data_white <- filter(data, Race == "White")
-data_nonwhite <- filter(data, Race != "White")
+data_white <- filter(data, race == "White")
+data_nonwhite <- filter(data, race != "White")
 
 # White group model
-model_white <- glm(Status ~ Age + Node.Proportion + Tumor.Size, 
+model_white <- glm(status ~ age + node_proportion + tumor_size, 
                    data = data_white, family = binomial)
 
 # Non-white group model
-model_nonwhite <- glm(Status ~ Age + Node.Proportion + Tumor.Size, 
+model_nonwhite <- glm(status ~ age + node_proportion + tumor_size, 
                       data = data_nonwhite, family = binomial)
 
 summary(model_white)
 summary(model_nonwhite)
 ```
 
+
+From the result above, we choose model 4 as our best model. Because it includes all predictors (age, race, t_stage, n_stage, tumor_size, estrogen_status, progesterone_status, node_proportion, and survival_months).
+And it has the lowest residual deviance and AIC value among all models (Residual Deviance = 2294.8, AIC = 2314.8).
+While the significant predictors include age, t_stage, n_stage, progesterone_status, node_proportion, and survival_months, with p-values below 0.05. It offers the most comprehensive evaluation and balances the trade-off between simplicity and explanatory power.
 #Model Validation
 ```{r}
-library(pROC)
-library(caret)
-# Ensure predictions align with the dataset used for model training
-clean_data$predicted_prob <- predict(model4, type = "response")
+# Split data into training and test sets
+set.seed(123)
+train_indices <- sample(seq_len(nrow(data)), size = 0.7 * nrow(data))
+train_data <- data[train_indices, ]
+test_data <- data[-train_indices, ]
 
-# ROC Curve for Model 4
-roc_curve <- roc(clean_data$Status, clean_data$predicted_prob)
-plot(roc_curve, main = "ROC Curve for Model 4", col = "blue")
-auc_value <- auc(roc_curve)
-print(paste("AUC for Model 4:", round(auc_value, 3)))
+# Fit the selected model (Model 4) on training data
+model4 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
+              estrogen_status + progesterone_status + node_proportion + survival_months,
+              data = train_data, family = binomial)
 
-# Confusion Matrix (using a cutoff of 0.5)
-predicted_class <- ifelse(clean_data$predicted_prob > 0.5, "Dead", "Alive")
-conf_matrix <- confusionMatrix(as.factor(predicted_class), as.factor(clean_data$Status), positive = "Dead")
+# Predict probabilities on test data
+test_data$predicted_prob <- predict(model4, newdata = test_data, type = "response")
+test_data$predicted_class <- ifelse(test_data$predicted_prob > 0.5, "Dead", "Alive")
+```
+
+```{r}
+# Confusion Matrix
+conf_matrix <- confusionMatrix(as.factor(test_data$predicted_class),
+                               as.factor(test_data$status), positive = "Dead")
 print(conf_matrix)
 ```
 
 ```{r}
-# Use cleaned data for residuals and fitted values
-clean_data$residuals <- residuals(model4, type = "deviance")
-fitted_values <- fitted(model4)
-
-# Residuals vs Fitted Values Plot
-library(ggplot2)
-ggplot(clean_data, aes(x = fitted_values, y = residuals)) +
-  geom_point(color = "blue", alpha = 0.5) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  labs(title = "Residuals vs Fitted Values", x = "Fitted Values", y = "Deviance Residuals") +
-  theme_minimal()
-```
-
-```{r}
-clean_data <- clean_data %>%
-  filter(differentiate != "Undifferentiated") %>%
-  droplevels()
-model4 <- glm(Status ~ Age + Race + T.Stage + N.Stage + Survival.Months +
-                Node.Proportion + Regional.Node.Positive + 
-                Estrogen.Status + Progesterone.Status,
-              data = clean_data, family = binomial)
-# Filter out "Undifferentiated" rows in subsets
-data_white_filtered <- data_white %>%
-  filter(differentiate %in% levels(clean_data$differentiate)) %>%
-  droplevels()
-
-data_nonwhite_filtered <- data_nonwhite %>%
-  filter(differentiate %in% levels(clean_data$differentiate)) %>%
-  droplevels()
-
-# Predict probabilities and evaluate ROC for White group
-roc_white <- roc(data_white_filtered$Status,
-                 predict(model4, newdata = data_white_filtered, type = "response"))
-
-auc_white <- auc(roc_white)
-print(paste("AUC for White group:", round(auc_white, 3)))
-
-# Predict probabilities and evaluate ROC for Non-White group
-roc_nonwhite <- roc(data_nonwhite_filtered$Status,
-                    predict(model4, newdata = data_nonwhite_filtered, type = "response"))
-
-auc_nonwhite <- auc(roc_nonwhite)
-print(paste("AUC for Non-White group:", round(auc_nonwhite, 3)))
-
-
-```
-
-```{r}
-library(broom)
-
-# Extract and format coefficients
-coeff_table <- tidy(model4, conf.int = TRUE, exponentiate = TRUE)
-significant_coeffs <- coeff_table %>% filter(p.value < 0.05)
-print(significant_coeffs)
-
-# Save table as CSV (for your report)
-write.csv(significant_coeffs, "significant_model4_coefficients.csv")
-
-```
-
-```{r}
-# Boxplot for Node.Proportion by Status
-ggplot(data, aes(x = Status, y = Node.Proportion, fill = Status)) +
-  geom_boxplot() +
-  theme_minimal() +
-  labs(title = "Node Proportion by Survival Status", x = "Status", y = "Node Proportion")
-
-# Scatter plot for Survival.Months vs Node.Proportion
-ggplot(data, aes(x = Survival.Months, y = Node.Proportion, color = Status)) +
-  geom_point(alpha = 0.7) +
-  theme_minimal() +
-  labs(title = "Survival Months vs Node Proportion", x = "Survival Months", y = "Node Proportion")
-```
-#Model Validation with sample
-#Split Data into Training and Testing Sets
-```{r}
-set.seed(123)  # For reproducibility
-library(caret)
-
-# Create training and testing sets
-train_index <- createDataPartition(clean_data$Status, p = 0.8, list = FALSE)
-train_data <- clean_data[train_index, ]
-test_data <- clean_data[-train_index, ]
-
-# Refit the model using the training set
-model4_train <- glm(Status ~ Age + Race + T.Stage + N.Stage + Survival.Months +
-                      Node.Proportion + Regional.Node.Positive +
-                      Estrogen.Status + Progesterone.Status,
-                    data = train_data, family = binomial)
-
-# Predict probabilities on the test set
-test_data$predicted_prob <- predict(model4_train, newdata = test_data, type = "response")
-```
-
-#Evaluate Model Performance on Test Data
-```{r}
-# ROC-AUC for test data
+# ROC Curve and AUC
 library(pROC)
-roc_test <- roc(test_data$Status, test_data$predicted_prob)
-auc_test <- auc(roc_test)
+roc_curve <- roc(test_data$status, test_data$predicted_prob)
+plot(roc_curve, main = "ROC Curve for Model 4", col = "blue")
+auc_value <- auc(roc_curve)
+print(paste("AUC for Model 4:", round(auc_value, 3)))
 
-# Plot ROC curve
-plot(roc_test, main = "ROC Curve for Test Data", col = "blue")
-print(paste("AUC on Test Data:", round(auc_test, 3)))
+# Residual Analysis
+train_data$residuals <- residuals(model4, type = "deviance")
+plot(model4$fitted.values, train_data$residuals,
+     main = "Residuals vs Fitted Values", xlab = "Fitted Values", ylab = "Deviance Residuals",
+     col = "blue", pch = 16)
+abline(h = 0, lty = 2)
 
-# Create confusion matrix using a threshold of 0.5
-test_data$predicted_class <- ifelse(test_data$predicted_prob > 0.5, "Dead", "Alive")
-conf_matrix_test <- confusionMatrix(as.factor(test_data$predicted_class), 
-                                    as.factor(test_data$Status), 
-                                    positive = "Dead")
-print(conf_matrix_test)
 ```
-#Cross-Validation
-```{r}
-# Perform k-fold cross-validation (k = 5)
-set.seed(123)
-cv_control <- trainControl(method = "cv", number = 5, classProbs = TRUE, summaryFunction = twoClassSummary)
+##Validation result:
+Accuracy: 88.17% (with 95% CI of 86.2% - 89.94%)
+High accuracy indicates good overall model performance.
 
-cv_model <- train(Status ~ Age + Race + T.Stage + N.Stage + Survival.Months +
-                    Node.Proportion + Regional.Node.Positive +
-                    Estrogen.Status + Progesterone.Status,
-                  data = clean_data, method = "glm", family = "binomial",
-                  trControl = cv_control, metric = "ROC")
+Sensitivity: 39.90%
+Indicates the model's ability to correctly identify the positive class (Dead cases). While sensitivity is moderate, this is often a tradeoff in medical or survival models.
 
-# Print cross-validation results
-print(cv_model)
-```
+Specificity: 97.41%
+The model demonstrates excellent specificity, meaning it performs well in identifying the negative class (Alive cases).
 
-```{r}
-threshold <- 0.3
-test_data$predicted_class <- ifelse(test_data$predicted_prob > threshold, "Dead", "Alive")
-conf_matrix_adj <- confusionMatrix(as.factor(test_data$predicted_class), 
-                                   as.factor(test_data$Status), positive = "Dead")
-print(conf_matrix_adj)
-```
+AUC (Area Under the Curve):
+AUC = 0.838.
+This value reflects the model's strong discriminative ability, indicating that it effectively separates the Alive and Dead classes.
+Residual Plot:
 
+The residual vs. fitted values plot shows no major pattern, suggesting that the model assumptions hold, and residuals are evenly distributed.
+##Conclusion base on the result of validation
+Model Validation Results: Model 4 performs well in terms of accuracy, specificity, and AUC, supporting its reliability and applicability.
+
+Strengths:
+
+1. Excellent specificity ensures minimal false positives, which is crucial for predictive modeling in sensitive contexts (e.g., survival analysis).
+2. Good balance of variables with significant contributions.
+Weakness:
+
+1. Sensitivity could be improved to reduce false negatives (Dead cases misclassified as Alive).
+
+All in all,this validation confirms that Model 4 is robust and suitable for the given dataset, with opportunities to refine sensitivity if required.
