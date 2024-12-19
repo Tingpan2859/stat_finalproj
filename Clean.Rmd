@@ -1,0 +1,329 @@
+---
+title: "BM_final"
+output: html_document
+date: "2024-12-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(GGally)
+library(data.table)
+```
+
+# load data
+```{r}
+data = read.csv("Project_2_data.csv")
+data
+```
+# preprocess
+```{r}
+colnames(data)
+data <- data %>%
+  drop_na()%>%
+  mutate( 
+    Race = if_else(Race != "White", "Not White", "White")) %>%
+  mutate(Main.Stage = case_when(
+    X6th.Stage %in% c("IIIA", "IIIC") ~ "III",
+    X6th.Stage %in% c("IIA", "IIB") ~ "II",
+    X6th.Stage %in% c("IVA", "IVB") ~ "IV",
+    TRUE ~ X6th.Stage
+  ))%>%
+  mutate(
+    T.Stage = as.numeric(gsub("T", "", T.Stage)),
+    N.Stage = as.numeric(gsub("N", "", N.Stage))
+  )%>%
+  mutate(
+    Race = as.factor(Race),
+    Marital.Status = as.factor(Marital.Status),
+    Estrogen.Status = as.factor(Estrogen.Status),
+    Progesterone.Status = as.factor(Progesterone.Status),
+    differentiate = as.factor(differentiate),
+    A.Stage = as.factor(A.Stage),
+    Status = as.factor(Status),
+    Main.Stage = as.factor(Main.Stage)
+  )%>%
+  select(-X6th.Stage)%>%
+  mutate(
+    Grade = as.numeric(gsub("[^0-9]", "", Grade)) 
+  )%>%
+  rename(Regional.Node.Positive = "Reginol.Node.Positive")%>%
+  janitor::clean_names()
+data
+
+```
+
+## see the plot after first preprocess
+```{r}
+for (var in names(data)) {
+  # Skip if the column is not numeric
+  if (is.numeric(data[[var]])) {
+    
+    # Histogram
+    p1 <- ggplot(data, aes_string(x = var)) +
+      geom_histogram(fill = "skyblue", color = "black", bins = 30) +
+      labs(title = paste("Histogram of", var), x = var, y = "Frequency") +
+      theme_minimal()
+    print(p1)
+    
+    # Boxplot
+    p2 <- ggplot(data, aes_string(y = var)) +
+      geom_boxplot(fill = "lightgreen", color = "black") +
+      labs(title = paste("Boxplot of", var), y = var) +
+      theme_minimal()
+    print(p2)
+  }
+}
+
+```
+## see the correlation between regional.node.examined and regional.node.positive
+```{r}
+pairs_data <- data[, c("regional_node_examined", "regional_node_positive")]
+
+pairs(pairs_data, main = "Pairs Plot: Regional Node Examined vs Regional Node Positive",
+      pch = 21, bg = "lightblue")
+
+```
+Linear Trend: There appears to be a positive association between Regional.Node.Examined and Regional.Node.Positive. As the number of nodes examined increases, the number of positive nodes also tends to increase.
+However, the relationship is not perfectly linear; there is noticeable spread in the points.
+
+High Variability: There is significant variability in Regional.Node.Positive values for a given range of Regional.Node.Examined. This suggests that other factors might influence the number of positive nodes beyond the number of examined nodes.
+
+Outliers: A few observations stand out as potential outliers, particularly where Regional.Node.Examined is high, but the number of Regional.Node.Positive remains low (or vice versa). These outliers could be influential points worth further investigation.
+
+## introduce a new variable proportion
+```{r}
+data = data%>%
+  mutate(node_proportion = regional_node_examined/regional_node_positive)
+```
+
+## see the plot after the second preprocess
+```{r}
+for (var in names(data)) {
+  # Skip if the column is not numeric
+  if (is.numeric(data[[var]])) {
+    
+    # Histogram
+    p1 <- ggplot(data, aes_string(x = var)) +
+      geom_histogram(fill = "skyblue", color = "black", bins = 30) +
+      labs(title = paste("Histogram of", var), x = var, y = "Frequency") +
+      theme_minimal()
+    print(p1)
+    
+    # Boxplot
+    p2 <- ggplot(data, aes_string(y = var)) +
+      geom_boxplot(fill = "lightgreen", color = "black") +
+      labs(title = paste("Boxplot of", var), y = var) +
+      theme_minimal()
+    print(p2)
+  }
+}
+```
+
+## skewness of Tumor.size
+```{r}
+hist(log(data$tumor_size))
+hist(sqrt(data$tumor_size))
+```
+
+## log transformation for tumor.size
+
+```{r}
+data = data %>%
+  mutate(tumor_size = log(tumor_size))
+```
+## see the plot after the third preprocess
+```{r}
+for (var in names(data)) {
+  # Skip if the column is not numeric
+  if (is.numeric(data[[var]])) {
+    
+    # Histogram
+    p1 <- ggplot(data, aes_string(x = var)) +
+      geom_histogram(fill = "skyblue", color = "black", bins = 30) +
+      labs(title = paste("Histogram of", var), x = var, y = "Frequency") +
+      theme_minimal()
+    print(p1)
+    
+    # Boxplot
+    p2 <- ggplot(data, aes_string(y = var)) +
+      geom_boxplot(fill = "lightgreen", color = "black") +
+      labs(title = paste("Boxplot of", var), y = var) +
+      theme_minimal()
+    print(p2)
+  }
+}
+```
+## skewness of Tumor.size
+```{r}
+hist(log(data$tumor_size))
+hist(sqrt(data$tumor_size))
+```
+
+## log transformation for tumor.size
+
+```{r}
+data = data %>%
+  mutate(tumor_size = log(tumor_size))
+```
+## see the plot after the third preprocess
+```{r}
+for (var in names(data)) {
+  # Skip if the column is not numeric
+  if (is.numeric(data[[var]])) {
+    
+    # Histogram
+    p1 <- ggplot(data, aes_string(x = var)) +
+      geom_histogram(fill = "skyblue", color = "black", bins = 30) +
+      labs(title = paste("Histogram of", var), x = var, y = "Frequency") +
+      theme_minimal()
+    print(p1)
+    
+    # Boxplot
+    p2 <- ggplot(data, aes_string(y = var)) +
+      geom_boxplot(fill = "lightgreen", color = "black") +
+      labs(title = paste("Boxplot of", var), y = var) +
+      theme_minimal()
+    print(p2)
+  }
+}
+```
+
+#Model Construction
+#Model1-Baseline Logistic Regression
+```{r}
+data$tumor_size <- ifelse(is.infinite(data$tumor_size), NA, data$tumor_size)
+
+data <- data %>% drop_na(tumor_size)
+
+model1 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
+                estrogen_status + progesterone_status,
+              data = data, family = binomial)
+
+summary(model1)
+
+```
+#Model2-Logistic Regression with Transformed Variables
+```{r}
+model2 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
+                estrogen_status * progesterone_status,
+              data = data, family = binomial)
+
+summary(model2)
+
+```
+
+#Model3-Interaction Model
+```{r}
+model3 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
+                estrogen_status + progesterone_status + node_proportion,
+              data = data, family = binomial)
+
+summary(model3)
+```
+#Model4-Stepwise Selection
+```{r}
+model4 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
+                estrogen_status + progesterone_status + node_proportion +
+                survival_months,
+              data = data, family = binomial)
+
+summary(model4)
+```
+#Model5-Fairness: Separate Models by Race
+```{r}
+# Stratify data by race
+data_white <- filter(data, race == "White")
+data_nonwhite <- filter(data, race != "White")
+
+# White group model
+model_white <- glm(status ~ age + node_proportion + tumor_size, 
+                   data = data_white, family = binomial)
+
+# Non-white group model
+model_nonwhite <- glm(status ~ age + node_proportion + tumor_size, 
+                      data = data_nonwhite, family = binomial)
+
+summary(model_white)
+summary(model_nonwhite)
+```
+
+
+From the result above, we choose model 4 as our best model. Because it includes all predictors (age, race, t_stage, n_stage, tumor_size, estrogen_status, progesterone_status, node_proportion, and survival_months).
+And it has the lowest residual deviance and AIC value among all models (Residual Deviance = 2294.8, AIC = 2314.8).
+While the significant predictors include age, t_stage, n_stage, progesterone_status, node_proportion, and survival_months, with p-values below 0.05. It offers the most comprehensive evaluation and balances the trade-off between simplicity and explanatory power.
+#Model Validation
+```{r}
+# Split data into training and test sets
+set.seed(123)
+train_indices <- sample(seq_len(nrow(data)), size = 0.7 * nrow(data))
+train_data <- data[train_indices, ]
+test_data <- data[-train_indices, ]
+
+# Fit the selected model (Model 4) on training data
+model4 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
+              estrogen_status + progesterone_status + node_proportion + survival_months,
+              data = train_data, family = binomial)
+
+# Predict probabilities on test data
+test_data$predicted_prob <- predict(model4, newdata = test_data, type = "response")
+test_data$predicted_class <- ifelse(test_data$predicted_prob > 0.5, "Dead", "Alive")
+```
+
+```{r}
+# Confusion Matrix
+conf_matrix <- confusionMatrix(as.factor(test_data$predicted_class),
+                               as.factor(test_data$status), positive = "Dead")
+print(conf_matrix)
+```
+
+```{r}
+# ROC Curve and AUC
+library(pROC)
+roc_curve <- roc(test_data$status, test_data$predicted_prob)
+plot(roc_curve, main = "ROC Curve for Model 4", col = "blue")
+auc_value <- auc(roc_curve)
+print(paste("AUC for Model 4:", round(auc_value, 3)))
+
+# Residual Analysis
+train_data$residuals <- residuals(model4, type = "deviance")
+plot(model4$fitted.values, train_data$residuals,
+     main = "Residuals vs Fitted Values", xlab = "Fitted Values", ylab = "Deviance Residuals",
+     col = "blue", pch = 16)
+abline(h = 0, lty = 2)
+
+```
+##Validation result:
+Accuracy: 88.17% (with 95% CI of 86.2% - 89.94%)
+High accuracy indicates good overall model performance.
+
+Sensitivity: 39.90%
+Indicates the model's ability to correctly identify the positive class (Dead cases). While sensitivity is moderate, this is often a tradeoff in medical or survival models.
+
+Specificity: 97.41%
+The model demonstrates excellent specificity, meaning it performs well in identifying the negative class (Alive cases).
+
+AUC (Area Under the Curve):
+AUC = 0.838.
+This value reflects the model's strong discriminative ability, indicating that it effectively separates the Alive and Dead classes.
+Residual Plot:
+
+The residual vs. fitted values plot shows no major pattern, suggesting that the model assumptions hold, and residuals are evenly distributed.
+##Conclusion base on the result of validation
+Model Validation Results: Model 4 performs well in terms of accuracy, specificity, and AUC, supporting its reliability and applicability.
+
+Strengths:
+
+1. Excellent specificity ensures minimal false positives, which is crucial for predictive modeling in sensitive contexts (e.g., survival analysis).
+2. Good balance of variables with significant contributions.
+Weakness:
+
+1. Sensitivity could be improved to reduce false negatives (Dead cases misclassified as Alive).
+
+All in all,this validation confirms that Model 4 is robust and suitable for the given dataset, with opportunities to refine sensitivity if required.
+
+
