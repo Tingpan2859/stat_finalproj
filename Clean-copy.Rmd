@@ -154,6 +154,27 @@ for (var in names(data)) {
   }
 }
 ```
+```{R, warning = FALSE, echo = FALSE}
+#Single hist plot for EDA
+
+#Data frame to long format
+df_long <- reshape2::melt(data)
+
+# Create plot
+ggplot(df_long, aes(value)) + 
+  geom_histogram(binwidth = 0.1, fill = "lightblue", color = "black") + 
+  facet_wrap(~ variable, scales = "free", ncol = 3) +
+  theme_minimal() +
+  labs(title = "Histograms of Variables", x = "Value", y = "Frequency") +
+geom_vline(data = df_long, aes(xintercept = ave(value, variable, FUN = mean)), 
+           color = "magenta", linetype = "dashed", size = 1, show.legend = FALSE) + 
+geom_vline(data = df_long, aes(xintercept = ave(value, variable, FUN = median)), 
+           color = "red", linetype = "dotted", size = 1.3, show.legend = FALSE)
+
+
+```
+
+
 
 #Model Construction
 #Model1-Baseline Logistic Regression
