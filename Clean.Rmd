@@ -14,6 +14,7 @@ library(ggplot2)
 library(GGally)
 library(data.table)
 library(caret)
+library(reshape2)
 ```
 
 # load data
@@ -153,10 +154,7 @@ for (var in names(data)) {
   }
 }
 ```
-
-``````{R, warning = FALSE, echo = FALSE}
-# Single hist plot for EDA
-
+```{R}
 # Identify numeric and factor variables in the dataset
 numeric_vars <- names(data)[sapply(data, is.numeric)]
 factor_vars <- names(data)[sapply(data, is.factor)]
@@ -164,17 +162,65 @@ factor_vars <- names(data)[sapply(data, is.factor)]
 # Data frame to long format with factor variables as id variables
 df_long <- reshape2::melt(data, id.vars = factor_vars)
 
+# Filter for numeric variables and ensure 'value' is numeric
+df_numeric <- df_long[df_long$variable %in% numeric_vars, ]
+df_numeric$value <- as.numeric(as.character(df_numeric$value))
+
 # Create plot for numeric variables
-ggplot(df_long[df_long$variable %in% numeric_vars, ], aes(value)) + 
+numeric_plot <- ggplot(df_numeric, aes(x = value)) + 
   geom_histogram(binwidth = 0.1, fill = "grey", color = "black") + 
   facet_wrap(~ variable, scales = "free", ncol = 3) +
   theme_minimal() +
   labs(title = "Histograms of Numeric Variables", x = "Value", y = "Frequency") +
-  geom_vline(data = df_long[df_long$variable %in% numeric_vars, ], aes(xintercept = ave(value, variable, FUN = mean)), 
-             color = "magenta", linetype = "dashed", size = 1, show.legend = FALSE) + 
-  geom_vline(data = df_long[df_long$variable %in% numeric_vars, ], aes(xintercept = ave(value, variable, FUN = median)), 
-             color = "red", linetype = "dotted", size = 1.3, show.legend = FALSE)
+  geom_vline(aes(xintercept = ave(value, variable, FUN = mean), color = "Mean"), 
+             linetype = "dashed", size = 1) + 
+  geom_vline(aes(xintercept = ave(value, variable, FUN = median), color = "Median"), 
+             linetype = "dotted", size = 1.3) +
+  scale_color_manual(name = "Statistics", values = c("Mean" = "magenta", "Median" = "red")) +
+  guides(color = guide_legend(override.aes = list(linetype = c("dashed", "dotted"), size = c(1, 1.3)))) +
+  theme(legend.position = "top", legend.justification = c("right", "top"))
 
+# Display the plot
+print(numeric_plot)
+
+```
+
+
+#EDA for factor variables
+```{R}
+# Function to calculate proportions for factor variables
+calculate_proportions_factor <- function(data, var, level) {
+  alive <- mean(data %>% filter(status == "Alive") %>% pull(var) == level, na.rm = TRUE)
+  dead <- mean(data %>% filter(status == "Dead") %>% pull(var) == level, na.rm = TRUE)
+  overall <- mean(data %>% pull(var) == level, na.rm = TRUE)
+  
+  tibble(
+    Characteristic = paste(var, level, sep = ": "),
+    Alive = alive,
+    Dead = dead,
+    Overall = overall
+  )
+}
+
+# List of factor variables to summarize
+factor_vars <- names(data)[sapply(data, is.factor)]
+
+# Initialize an empty list to store results
+results <- list()
+
+# Loop through factor variables and calculate proportions
+for (var in factor_vars) {
+  for (level in levels(data[[var]])) {
+    result <- calculate_proportions_factor(data, var, level)
+    results[[paste(var, level)]] <- result
+  }
+}
+
+# Combine results into a single dataframe
+final_table <- bind_rows(results)
+
+# Print the final table
+print(final_table)
 ```
 
 ## see the plot after the third preprocess
