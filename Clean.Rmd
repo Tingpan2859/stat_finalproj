@@ -26,7 +26,7 @@ colnames(data)
 data <- data %>%
   drop_na()%>%
   mutate( 
-    Race = if_else(Race != "White", "Black", "White")) %>%
+    Race_w = if_else(Race != "White", "Black", "White")) %>%
   mutate(Main.Stage = case_when(
     X6th.Stage %in% c("IIIA", "IIIC") ~ "III",
     X6th.Stage %in% c("IIA", "IIB") ~ "II",
@@ -34,11 +34,8 @@ data <- data %>%
     TRUE ~ X6th.Stage
   ))%>%
   mutate(
-    T.Stage = as.numeric(gsub("T", "", T.Stage)),
-    N.Stage = as.numeric(gsub("N", "", N.Stage))
-  )%>%
-  mutate(
     Race = as.factor(Race),
+    Race_w = as.factor(Race_w),
     Marital.Status = as.factor(Marital.Status),
     Estrogen.Status = as.factor(Estrogen.Status),
     Progesterone.Status = as.factor(Progesterone.Status),
@@ -47,10 +44,7 @@ data <- data %>%
     Status = as.factor(Status),
     Main.Stage = as.factor(Main.Stage)
   )%>%
-  select(-X6th.Stage)%>%
-  mutate(
-    Grade = as.numeric(gsub("[^0-9]", "", Grade)) 
-  )%>%
+  select(-c(X6th.Stage,Grade,T.Stage,N.Stage))%>%
   rename(Regional.Node.Positive = "Reginol.Node.Positive")%>%
   janitor::clean_names()
 data
