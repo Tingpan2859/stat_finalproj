@@ -26,7 +26,7 @@ colnames(data)
 data <- data %>%
   drop_na()%>%
   mutate( 
-    Race = if_else(Race != "White", "Not White", "White")) %>%
+    Race = if_else(Race != "White", "Black", "White")) %>%
   mutate(Main.Stage = case_when(
     X6th.Stage %in% c("IIIA", "IIIC") ~ "III",
     X6th.Stage %in% c("IIA", "IIB") ~ "II",
