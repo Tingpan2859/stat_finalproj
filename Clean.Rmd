@@ -15,6 +15,7 @@ library(GGally)
 library(data.table)
 library(caret)
 library(reshape2)
+library(knitr)
 ```
 
 # load data
@@ -219,8 +220,7 @@ for (var in factor_vars) {
 # Combine results into a single dataframe
 final_table <- bind_rows(results)
 
-# Print the final table
-print(final_table)
+kable(final_table, format = "markdown", col.names = c("Characteristic", "Alive Proportion", "Dead Proportion", "Overall Proportion"))
 ```
 
 ## see the plot after the third preprocess
