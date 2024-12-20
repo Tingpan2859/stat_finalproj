@@ -13,6 +13,7 @@ library(tidyverse)
 library(ggplot2)
 library(GGally)
 library(data.table)
+library(caret)
 ```
 
 # load data
@@ -28,7 +29,7 @@ data <- data %>%
   mutate( 
     Race_w = if_else(Race != "White", "Black", "White")) %>%
   mutate(Main.Stage = case_when(
-    X6th.Stage %in% c("IIIA", "IIIC") ~ "III",
+    X6th.Stage %in% c("IIIA","IIIB", "IIIC") ~ "III",
     X6th.Stage %in% c("IIA", "IIB") ~ "II",
     X6th.Stage %in% c("IVA", "IVB") ~ "IV",
     TRUE ~ X6th.Stage
@@ -44,7 +45,7 @@ data <- data %>%
     Status = as.factor(Status),
     Main.Stage = as.factor(Main.Stage)
   )%>%
-  select(-c(Grade,T.Stage,N.Stage))%>%
+  select(-c(Grade))%>%
   rename(Regional.Node.Positive = "Reginol.Node.Positive")%>%
   janitor::clean_names()
 data
@@ -152,18 +153,6 @@ for (var in names(data)) {
   }
 }
 ```
-## skewness of Tumor.size
-```{r}
-hist(log(data$tumor_size))
-hist(sqrt(data$tumor_size))
-```
-
-## log transformation for tumor.size
-
-```{r}
-data = data %>%
-  mutate(tumor_size = log(tumor_size))
-```
 
 ``````{R, warning = FALSE, echo = FALSE}
 # Single hist plot for EDA
@@ -218,18 +207,33 @@ data$tumor_size <- ifelse(is.infinite(data$tumor_size), NA, data$tumor_size)
 
 data <- data %>% drop_na(tumor_size)
 
-model1 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
-                estrogen_status + progesterone_status,
-              data = data, family = binomial)
+data_1 = data %>%
+  select(-c(race_w,regional_node_examined,regional_node_positive,t_stage,n_stage,main_stage))
+
+model_full = lm(survival_months ~.-status-x6th_stage, data = data_1)
+summary(model_full)
+# model_full_w = lm(survival_months ~.-status-race, data = data_1)
+model_full_6th = lm(survival_months ~.-status-main_stage, data = data_1)
+summary(model_full_6th)
+AIC(model_full)
+# AIC(model_full_w)
+AIC(model_full_6th)
+```
+
+
+```{r}
+data_1
+model1 <- glm(status ~.-survival_months-a_stage-predicted_prob,
+              data = data_1, family = binomial)
 
 summary(model1)
 
 ```
 #Model2-Logistic Regression with Transformed Variables
 ```{r}
-model2 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
-                estrogen_status * progesterone_status,
-              data = data, family = binomial)
+model2 <- glm(status ~. -survival_months +
+                estrogen_status * progesterone_status-a_stage,
+              data = data_1, family = binomial)
 
 summary(model2)
 
@@ -237,38 +241,73 @@ summary(model2)
 
 #Model3-Interaction Model
 ```{r}
-model3 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
-                estrogen_status + progesterone_status + node_proportion,
-              data = data, family = binomial)
+model3 <- glm(status ~. -survival_months + tumor_size * a_stage,
+              data = data_1, family = binomial)
 
 summary(model3)
 ```
 #Model4-Stepwise Selection
 ```{r}
-model4 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
-                estrogen_status + progesterone_status + node_proportion +
-                survival_months,
-              data = data, family = binomial)
+
+model4 <- glm(status ~. -survival_months + progesterone_status * a_stage,
+              data = data_1, family = binomial)
 
 summary(model4)
 ```
 #Model5-Fairness: Separate Models by Race
 ```{r}
 # Stratify data by race
-data_white <- filter(data, race == "White")
-data_nonwhite <- filter(data, race != "White")
+data_1$predicted_prob <- predict(model1, newdata = data_1, type = "response")
+data_white <- filter(data_1, race == "White")
+data_black <- filter(data_1, race == "Black")
+data_other <- filter(data_1, race == "Other")
 
 # White group model
-model_white <- glm(status ~ age + node_proportion + tumor_size, 
+model_white <- glm(status ~ -survival_months-predicted_prob, 
                    data = data_white, family = binomial)
 
 # Non-white group model
-model_nonwhite <- glm(status ~ age + node_proportion + tumor_size, 
-                      data = data_nonwhite, family = binomial)
+model_black <- glm(status ~ -survival_months-predicted_prob, 
+                      data = data_black, family = binomial)
+model_other <- glm(status ~ -survival_months-predicted_prob, 
+                      data = data_other, family = binomial)
 
 summary(model_white)
-summary(model_nonwhite)
+summary(model_black)
+summary(model_other)
 ```
+```{r}
+roc_white <- roc(data_white$status, data_white$predicted_prob)
+auc_white <- auc(roc_white)
+
+# Black
+roc_black <- roc(data_black$status, data_black$predicted_prob)
+auc_black <- auc(roc_black)
+
+# Other
+roc_other <- roc(data_other$status, data_other$predicted_prob)
+auc_other <- auc(roc_other)
+
+library(DescTools)
+data_white$status <- ifelse(data_white$status == "Dead", 1, 0)
+data_black$status <- ifelse(data_black$status == "Dead", 1, 0)
+data_other$status <- ifelse(data_other$status == "Dead", 1, 0)
+brier_white <- BrierScore(data_white$status,data_white$predicted_prob)
+
+# Black
+brier_black <- BrierScore(data_black$status,data_black$predicted_prob)
+
+# Other
+brier_other <- BrierScore(data_other$status,data_other$predicted_prob)
+results <- data.frame(
+    race = c("White", "Black", "Other"),
+    roc_auc = c(auc_white, auc_black, auc_other),
+    brier_score = c(brier_white, brier_black, brier_other)
+)
+
+print(results)
+```
+
 
 
 From the result above, we choose model 4 as our best model. Because it includes all predictors (age, race, t_stage, n_stage, tumor_size, estrogen_status, progesterone_status, node_proportion, and survival_months).
@@ -278,17 +317,16 @@ While the significant predictors include age, t_stage, n_stage, progesterone_sta
 ```{r}
 # Split data into training and test sets
 set.seed(123)
-train_indices <- sample(seq_len(nrow(data)), size = 0.7 * nrow(data))
-train_data <- data[train_indices, ]
-test_data <- data[-train_indices, ]
+train_indices <- sample(seq_len(nrow(data_1)), size = 0.7 * nrow(data_1))
+train_data <- data_1[train_indices, ]
+test_data <- data_1[-train_indices, ]
 
-# Fit the selected model (Model 4) on training data
-model4 <- glm(status ~ age + race + t_stage + n_stage + tumor_size +
-              estrogen_status + progesterone_status + node_proportion + survival_months,
+# Fit the selected model (Model 1) on training data
+model1_train <- glm(status ~.-survival_months,
               data = train_data, family = binomial)
 
 # Predict probabilities on test data
-test_data$predicted_prob <- predict(model4, newdata = test_data, type = "response")
+test_data$predicted_prob <- predict(model1_train, newdata = test_data, type = "response")
 test_data$predicted_class <- ifelse(test_data$predicted_prob > 0.5, "Dead", "Alive")
 ```
 
@@ -303,15 +341,15 @@ print(conf_matrix)
 # ROC Curve and AUC
 library(pROC)
 roc_curve <- roc(test_data$status, test_data$predicted_prob)
-plot(roc_curve, main = "ROC Curve for Model 4", col = "blue")
+plot(roc_curve, main = "ROC Curve for Model 1", col = "blue")
 auc_value <- auc(roc_curve)
-print(paste("AUC for Model 4:", round(auc_value, 3)))
+print(paste("AUC for Model 1:", round(auc_value, 3)))
 
 # Residual Analysis
-train_data$residuals <- residuals(model4, type = "deviance")
-plot(model4$fitted.values, train_data$residuals,
+train_data$residuals <- residuals(model1_train, type = "deviance")
+plot(model1_train$fitted.values, train_data$residuals,
      main = "Residuals vs Fitted Values", xlab = "Fitted Values", ylab = "Deviance Residuals",
-     col = "blue", pch = 16)
+     col = "blue", pch = 5)
 abline(h = 0, lty = 2)
 
 ```
@@ -343,5 +381,32 @@ Weakness:
 1. Sensitivity could be improved to reduce false negatives (Dead cases misclassified as Alive).
 
 All in all,this validation confirms that Model 4 is robust and suitable for the given dataset, with opportunities to refine sensitivity if required.
+
+```{r}
+library(separationplot)
+test_data$status <- ifelse(test_data$status == "Dead", 1, 0)
+separationplot(pred = test_data$predicted_prob, 
+               actual = test_data$status, 
+               line = TRUE, # Adds the black line for predicted probabilities
+               type = "rect", # Uses colored stripes (yellow for Alive, red for Dead)
+               show.expected = TRUE) # Line color
+```
+```{r}
+separationplot(pred = data_white$predicted_prob, 
+               actual = data_white$status, 
+               line = TRUE, # Adds the black line for predicted probabilities
+               type = "rect", # Uses colored stripes (yellow for Alive, red for Dead)
+               show.expected = TRUE) # Line color
+separationplot(pred = data_black$predicted_prob, 
+               actual = data_black$status, 
+               line = TRUE, # Adds the black line for predicted probabilities
+               type = "rect", # Uses colored stripes (yellow for Alive, red for Dead)
+               show.expected = TRUE) # Line color
+separationplot(pred = data_other$predicted_prob, 
+               actual = data_other$status, 
+               line = TRUE, # Adds the black line for predicted probabilities
+               type = "rect", # Uses colored stripes (yellow for Alive, red for Dead)
+               show.expected = TRUE) # Line color
+```
 
 
