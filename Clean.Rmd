@@ -45,9 +45,10 @@ data <- data %>%
     differentiate = as.factor(differentiate),
     A.Stage = as.factor(A.Stage),
     Status = as.factor(Status),
-    Main.Stage = as.factor(Main.Stage)
+    Main.Stage = as.factor(Main.Stage),
+    X6th.Stage = as.factor(X6th.Stage)
   )%>%
-  select(-c(Grade))%>%
+  # select(-grade)%>%
   rename(Regional.Node.Positive = "Reginol.Node.Positive")%>%
   janitor::clean_names()
 data
@@ -190,6 +191,7 @@ print(numeric_plot)
 #EDA for factor variables
 ```{R}
 # Function to calculate proportions for factor variables
+data
 calculate_proportions_factor <- function(data, var, level) {
   alive <- mean(data %>% filter(status == "Alive") %>% pull(var) == level, na.rm = TRUE)
   dead <- mean(data %>% filter(status == "Dead") %>% pull(var) == level, na.rm = TRUE)
@@ -268,10 +270,13 @@ AIC(model_full_6th)
 
 
 ```{r}
+library(car)
 data_1
 model1 <- glm(status ~.-survival_months-a_stage-predicted_prob,
               data = data_1, family = binomial)
-
+plot(model1)
+vif(model1)
+par(mfrow = c(2, 2))
 summary(model1)
 
 ```
